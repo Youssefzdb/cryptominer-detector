@@ -1,39 +1,38 @@
 #!/usr/bin/env python3
 """
-cryptominer-detector - Detect unauthorized cryptomining on systems/networks
-Checks processes, CPU usage, network connections, and known miner signatures
+cryptominer-detector - Cryptomining Malware Detection Tool
+Detects unauthorized cryptocurrency mining on systems and networks
 """
 import argparse
 from modules.process_scanner import ProcessScanner
 from modules.network_monitor import NetworkMonitor
-from modules.signature_checker import SignatureChecker
-from modules.report import MinerReport
+from modules.cpu_analyzer import CPUAnalyzer
+from modules.report import CryptoMinerReport
 
 def main():
     parser = argparse.ArgumentParser(description="cryptominer-detector")
-    parser.add_argument("--mode", choices=["process","network","signature","full"], default="full")
-    parser.add_argument("--output", default="miner_report.html")
+    parser.add_argument("--mode", choices=["process","network","cpu","full"], default="full")
+    parser.add_argument("--output", default="cryptominer_report.html")
     args = parser.parse_args()
 
     print("[*] CryptoMiner Detector starting...")
     results = {}
 
-    if args.mode in ["process","full"]:
-        ps = ProcessScanner()
-        results["processes"] = ps.scan()
+    if args.mode in ["process", "full"]:
+        scanner = ProcessScanner()
+        results["processes"] = scanner.scan()
 
-    if args.mode in ["network","full"]:
-        nm = NetworkMonitor()
-        results["network"] = nm.check()
+    if args.mode in ["network", "full"]:
+        monitor = NetworkMonitor()
+        results["network"] = monitor.check()
 
-    if args.mode in ["signature","full"]:
-        sc = SignatureChecker()
-        results["signatures"] = sc.check()
+    if args.mode in ["cpu", "full"]:
+        cpu = CPUAnalyzer()
+        results["cpu"] = cpu.analyze()
 
-    report = MinerReport(results)
+    report = CryptoMinerReport(results)
     report.save(args.output)
-    total = sum(len(v) for v in results.values() if isinstance(v, list))
-    print(f"[+] {total} indicators found. Report: {args.output}")
+    print(f"[+] Report: {args.output}")
 
 if __name__ == "__main__":
     main()
