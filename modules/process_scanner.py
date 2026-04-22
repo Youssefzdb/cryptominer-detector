@@ -1,50 +1,56 @@
 #!/usr/bin/env python3
-"""Process Scanner - Detect mining processes by name and CPU usage"""
+"""Process Scanner - Detect suspicious mining processes"""
 import subprocess
 import re
 
-MINER_PROCESS_NAMES = [
-    "xmrig", "xmr-stak", "minerd", "ethminer", "cgminer",
-    "bfgminer", "nheqminer", "ccminer", "nbminer", "gminer",
-    "t-rex", "phoenixminer", "lolminer", "teamredminer"
+MINER_SIGNATURES = [
+    "xmrig", "cgminer", "bfgminer", "cpuminer", "minerd",
+    "ethminer", "claymore", "nicehash", "phoenix", "lolminer",
+    "gminer", "t-rex", "nanominer", "srbminer", "teamredminer",
+    "stratum+tcp", "pool.minexmr", "moneropool", "nanopool"
 ]
 
 class ProcessScanner:
     def scan(self):
         findings = []
-        print("[*] Scanning processes for miner signatures...")
+        print("[*] Scanning running processes for miner signatures...")
         try:
-            out = subprocess.check_output(["ps", "aux"], text=True, timeout=5)
-            for line in out.splitlines():
-                lower = line.lower()
-                for miner in MINER_PROCESS_NAMES:
-                    if miner in lower:
+            result = subprocess.run(
+                ["ps", "aux"],
+                capture_output=True, text=True, timeout=10
+            )
+            for line in result.stdout.splitlines():
+                line_lower = line.lower()
+                for sig in MINER_SIGNATURES:
+                    if sig in line_lower:
+                        parts = line.split()
                         findings.append({
-                            "type": "Miner Process",
-                            "process": line[:120],
-                            "miner": miner,
+                            "type": "Suspicious Process",
+                            "pid": parts[1] if len(parts) > 1 else "?",
+                            "user": parts[0] if parts else "?",
+                            "signature": sig,
+                            "cmdline": " ".join(parts[10:])[:100],
                             "severity": "CRITICAL"
                         })
-                        print(f"[!!!] MINER DETECTED: {miner}")
+                        print(f"[!] MINER PROCESS: {sig} | PID={parts[1] if len(parts) > 1 else '?'}")
                         break
-
-            # Check for high-CPU processes
-            lines = out.splitlines()[1:]
-            for line in lines:
-                parts = line.split()
-                if len(parts) > 2:
-                    try:
-                        cpu = float(parts[2])
-                        if cpu > 80:
-                            findings.append({
-                                "type": "High CPU Process",
-                                "process": " ".join(parts[10:])[:80],
-                                "cpu": cpu,
-                                "severity": "HIGH"
-                            })
-                            print(f"[!] High CPU: {cpu}% — {' '.join(parts[10:])[:50]}")
-                    except:
-                        pass
         except Exception as e:
-            print(f"[-] Process scan failed: {e}")
+            findings.append({"type": "Error", "detail": str(e), "severity": "INFO"})
+
+        # Check crontab for persistence
+        try:
+            cron = subprocess.check_output(["crontab", "-l"], stderr=subprocess.DEVNULL).decode()
+            for sig in MINER_SIGNATURES:
+                if sig in cron.lower():
+                    findings.append({
+                        "type": "Miner in Crontab",
+                        "signature": sig,
+                        "severity": "CRITICAL",
+                        "detail": "Cryptominer persistence via cron"
+                    })
+                    print(f"[!] Miner in crontab: {sig}")
+        except:
+            pass
+
+        print(f"[+] Process scan: {len(findings)} suspicious entries")
         return findings
