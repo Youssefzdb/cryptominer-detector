@@ -1,47 +1,52 @@
 #!/usr/bin/env python3
 """Network Monitor - Detect mining pool connections"""
 import subprocess
-import socket
+import re
 
-# Common mining pool ports
-MINING_PORTS = [3333, 4444, 5555, 7777, 8888, 9999, 14444, 45700]
-# Known mining pool domains
-MINING_DOMAINS = [
-    "pool.minexmr.com", "xmrpool.eu", "nanopool.org",
-    "f2pool.com", "antpool.com", "nicehash.com",
-    "dwarfpool.com", "ethermine.org", "2miners.com"
+MINING_PORTS = [3333, 4444, 5555, 7777, 8888, 9999, 14444, 45560, 45700]
+MINING_POOL_DOMAINS = [
+    "pool.minexmr.com", "monerohash.com", "nanopool.org",
+    "f2pool.com", "antpool.com", "nicehash.com", "2miners.com",
+    "ethermine.org", "flypool.org", "supportxmr.com"
 ]
 
 class NetworkMonitor:
     def check(self):
         findings = []
         print("[*] Checking network connections for mining activity...")
+
         try:
-            out = subprocess.check_output(["ss", "-tnp"], text=True, timeout=5)
-            for line in out.splitlines():
+            result = subprocess.run(
+                ["ss", "-tnp"],
+                capture_output=True, text=True, timeout=10
+            )
+            for line in result.stdout.splitlines():
                 for port in MINING_PORTS:
-                    if f":{port}" in line:
+                    if f":{port} " in line or f":{port}\t" in line:
                         findings.append({
                             "type": "Mining Port Connection",
-                            "detail": line[:120],
                             "port": port,
-                            "severity": "CRITICAL"
+                            "detail": line.strip()[:120],
+                            "severity": "HIGH"
                         })
-                        print(f"[!!!] Mining port {port} connection: {line[:60]}")
+                        print(f"[!] Mining port {port} in use: {line[:80]}")
+        except Exception as e:
+            findings.append({"type": "Error", "detail": str(e), "severity": "INFO"})
+
+        # Check /etc/hosts for mining pool blocking bypass
+        try:
+            with open("/etc/hosts") as f:
+                hosts = f.read()
+            for pool in MINING_POOL_DOMAINS:
+                if pool in hosts:
+                    findings.append({
+                        "type": "Mining Pool in /etc/hosts",
+                        "domain": pool,
+                        "severity": "MEDIUM",
+                        "detail": "Mining pool domain found in /etc/hosts"
+                    })
         except:
             pass
 
-        # DNS check against known pools
-        for domain in MINING_DOMAINS[:5]:
-            try:
-                socket.getaddrinfo(domain, None)
-                findings.append({
-                    "type": "Mining Pool DNS Resolved",
-                    "detail": domain,
-                    "severity": "HIGH"
-                })
-                print(f"[!] Mining pool resolvable: {domain}")
-            except:
-                pass
-
+        print(f"[+] Network check: {len(findings)} issues found")
         return findings
